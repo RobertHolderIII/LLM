@@ -37,8 +37,8 @@ export GROQ_API_KEY=<your-groq-api-key>
 
 Run the Jupyter notebooks to see various capabilities
 
-TakeoutAssessment.ipynb - set up agent, tools, and run queries
-Validation-manual - assess how well agents are answering the questions
+- TakeoutAssessment.ipynb - set up agent, tools, and run queries
+- Validation-manual.ipynb - assess how well agents are answering the questions
 
 
 ## Requirements
