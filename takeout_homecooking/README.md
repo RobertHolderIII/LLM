@@ -51,5 +51,5 @@ See `requirements.txt` for a full list of dependencies. Key packages include:
 ## TODO
 
 - remove repeated code between TakeoutAssessment and Validation-manual
-- additional 
+- additional analysis of validation results
 
