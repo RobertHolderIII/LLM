@@ -1,0 +1,9 @@
+beautifulsoup4
+gradio==5.25.0
+groq==0.19.0
+langchain==0.3.23
+langchain-community==0.3.21
+langchain-pinecone==0.2.5
+pandas==2.2.3
+pinecone==6.0.2
+sentence-transformers==4.0.2
