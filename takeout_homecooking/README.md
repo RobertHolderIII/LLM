@@ -52,4 +52,5 @@ See `requirements.txt` for a full list of dependencies. Key packages include:
 
 - remove repeated code between TakeoutAssessment and Validation-manual
 - additional analysis of validation results
+- see if an LLM could generate Pandas code to answer queries
 
