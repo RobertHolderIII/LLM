@@ -1,9 +1,10 @@
 # Deep Space Nine chatbot
 
-Initial pass at creating an DS9 chatbot based on commentary of each episode at [Jammer's Reviews](https://www.jammersreviews.com/st-ds9/) 
+Initial pass at creating a Retrieval-Augmented Generation (RAG)-based chatbot based on the commentary of each Deep Space Nine episode at [Jammer's Reviews](https://www.jammersreviews.com/st-ds9/)
 
 Try it out at [https://huggingface.co/spaces/robertholder/deep-space-nine](https://huggingface.co/spaces/robertholder/deep-space-nine)
 
+Example of use:
 ![chat bot](chat_pic.png "Example of chatbot")
 
 
