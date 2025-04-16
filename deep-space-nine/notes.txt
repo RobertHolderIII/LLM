@@ -1,5 +1,13 @@
 I originally made documents out of the home page instead of the reviews, and the query response was
 
+"""
 Unfortunately, the provided transcripts do not contain the actual reviews or ratings of episodes by the reviewer, known as "Jammer." The transcripts only include the menu and site information, but no episode reviews or ratings.
 
 To find out the reviewer's favorite episodes, I recommend visiting the original review website, https://www.jammersreviews.com/, and searching for the reviews of specific episodes or seasons of Star Trek: Deep Space Nine.
+"""
+
+Other stuff that I had to figure out
+
+- Setting up Pinecone.  Not hard, but did run into a mismatch between embedding dimensions
+- Getting SSH keys to play nicely with Huggingface.  Had to generate some new ones.  Biggest challenge was that, although I generated an access key, I missed that I need to have an SSH key to push to the HF repo.
+- Figuring out where to put API keys.  Wasn't immediately sure how Gradio would handle that, but in hindsight it is obvious that they need to be in the Huggingface environment
