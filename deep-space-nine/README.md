@@ -4,6 +4,8 @@ Initial pass at creating an DS9 chatbot based on commentary of each episode at [
 
 Try it out at [https://huggingface.co/spaces/robertholder/deep-space-nine](https://huggingface.co/spaces/robertholder/deep-space-nine)
 
+![chat bot](chat_pic.png "Example of chatbot")
+
 
 # Overview
 
