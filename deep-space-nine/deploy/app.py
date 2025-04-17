@@ -46,6 +46,11 @@ with gr.Blocks() as demo:
     gr.Markdown(
         """
         ## Let's talk about Deep Space Nine!  Chatbot based on [Jammer's Reviews](https://www.jammersreviews.com/st-ds9/).
+
+        Example of some simple queries to try:
+        - What is the overall synopsis of DS9?
+        - If I could only watch one Deep Space Nine espisode, which one should I watch?
+        - Who is the most interesting character?
         """
         )
     gr.ChatInterface(fn=transcript_chat_completion, type="messages")
