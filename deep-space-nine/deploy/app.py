@@ -11,6 +11,9 @@ pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 index = pc.Index('ds9-documents')
 docsearch = PineconeVectorStore(index=index, 
                                 embedding=SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2"))
+#model='llama3-8b-8192'
+#model='meta-llama/llama-4-maverick-17b-128e-instruct'
+model="llama-3.3-70b-versatile"
 
 def transcript_chat_completion(user_question, history):
     
@@ -33,14 +36,27 @@ def transcript_chat_completion(user_question, history):
                 "content": user_question,
             }
         ],
-        model="llama3-8b-8192",
+        model=model
     )
 
     return chat_completion.choices[0].message.content
 
-gr.ChatInterface(
-    fn=transcript_chat_completion, 
-    type="messages"
-).launch()
 
-
+with gr.Blocks() as demo:
+    gr.Markdown(
+        """
+        ## Let's talk about Deep Space Nine!  Chatbot based on [Jammer's Reviews](https://www.jammersreviews.com/st-ds9/).
+        """
+        )
+    gr.ChatInterface(fn=transcript_chat_completion, type="messages")
+    gr.Markdown(f"Running with model `{model}`")
+    gr.Markdown(
+        """
+        [2025-04-12] initial deployment<br>
+        [2025-04-17] Updated UI. Trying different models
+        """
+        )
+    
+if __name__ == "__main__":
+    print('v2025-04-17')
+    demo.launch()
