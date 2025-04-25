@@ -7,7 +7,7 @@ In short, this
 - parses out the text with BeautifulSoup
 - populates a Chroma vector store using Chroma's default embedding function
 - prompts for the most important stories via Chroma's default model
-- prompts for the summarization of each story using Llamma (via Groq inference)
+- prompts for the summarization of each story using Llama (via Groq inference)
 
 Of course, a prompt such as `Do a search for the 5 most recent articles on XXX and provide summaries` submitted to ChatGPT does essentially the same thing.
 
