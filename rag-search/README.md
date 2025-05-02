@@ -12,3 +12,22 @@ In short, this
 Of course, a prompt such as `Do a search for the 5 most recent articles on XXX and provide summaries` submitted to ChatGPT does essentially the same thing.
 
 One advantage of this approach, however, is that is does allow for the possibility of automating the inclusion of articles not publicly available on the web.  These may consist of propriatary documents or documents behind a paywall, for example.  One can manually upload articles to ChatGPT, but that may not be feasible with a large number of documents.
+
+## Setup and installation
+
+Install the required packages
+```
+pip install -r requirements.txt
+```
+
+Get [Groq](https://console.groq.com/home) API key and install as environment variable
+```
+export GROQ_API_KEY=<your-api-key>
+```
+
+## Usage
+
+Start Jupyter server using
+`jupyter lab` or `jupyter notebook`
+
+Run `rag-search` notebook
