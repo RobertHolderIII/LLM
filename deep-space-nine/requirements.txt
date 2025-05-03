@@ -7,3 +7,4 @@ langchain-pinecone==0.2.5
 pandas==2.2.3
 pinecone==6.0.2
 sentence-transformers==4.0.2
+tiktoken

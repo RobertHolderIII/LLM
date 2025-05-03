@@ -28,10 +28,8 @@ python -m venv agnoenv
 pip install -r requirements.txt
 ```
 
-4. Set up your Groq API key as an environment variable:
-```bash
-export GROQ_API_KEY=<your-groq-api-key>
-```
+4. Set up your Groq API key in the [.env](../.env-example) file
+
 
 ## Usage
 

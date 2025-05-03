@@ -22,8 +22,8 @@ To run locally,
 - get free [Pinecone](https://www.pinecone.io/) API key
 - create a Pinecone vector store named `ds9-documents` with embedding dimension `384`.
 - get free [Groq](https://console.groq.com/home) API key
-- store Pinecone API key in `PINECONE_API_KEY` environment variable
-- store Groq API key in `GROQ_API_KEY` environment variable
+- store Pinecone API key as `PINECONE_API_KEY` in the [.env](../.env-example) file
+- store Groq API key as `GROQ_API_KEY` in the [.env](../.env-example) file
 - (optional, but recommended) create a new python environment and activate
 - install required modules by running `pip install -r requirements.txt`
 - start Jupyter server

@@ -20,10 +20,7 @@ Install the required packages
 pip install -r requirements.txt
 ```
 
-Get [Groq](https://console.groq.com/home) API key and install as environment variable
-```
-export GROQ_API_KEY=<your-api-key>
-```
+Get [Groq](https://console.groq.com/home) API key and place in the [.env](../.env-example) file
 
 ## Usage
 
