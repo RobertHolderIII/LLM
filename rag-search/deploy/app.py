@@ -9,7 +9,8 @@ import gradio as gr
 
 load_dotenv('../../.env')
 client = Groq(api_key = os.getenv('GROQ_API_KEY'))
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TOKENIZERS_PARALLELISM"] = "false" #prevents a warning message from langchain
+chroma_client = None
 
 def summarize(client, transcript):
     chat_completion = client.chat.completions.create(
@@ -41,7 +42,7 @@ def get_text(url):
     text = BeautifulSoup(html, features="html.parser").get_text().strip()
     return text
 
-chroma_client = chromadb.Client()
+
 def create_vector_store(search_terms):
     urls = web_search(search_terms)
     documents = []
@@ -50,8 +51,9 @@ def create_vector_store(search_terms):
         yield f'downloading {i+1}/{len(urls)}: {url}'
     ids = [f'id{i}' for i in range(len(documents))]
     metadatas = [{'source-url': url} for url in urls]
-    
 
+    chromadb.api.client.SharedSystemClient.clear_system_cache() #prevents client getting stale
+    chroma_client = chromadb.Client()
     collection_name = "webpages"
 
     # get rid of old collection
