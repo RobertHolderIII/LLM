@@ -73,6 +73,7 @@ def create_vector_store(search_terms, max_search_res):
         
     # TODO need to handle the case where search_res has a URL that we did not use
     # `add` uses Chroma's default sentence embedding model
+    yield f'Indexing {len(documents)} documents...'
     collection.add(documents=documents, ids=ids, metadatas=metadatas)
     yield f'Document store recreated with {collection.count()} documents'
     
@@ -104,6 +105,12 @@ def generate_summaries(prompt, num_docs):
         out += (f'{idx+1}: {url}\n---------------------\n{summary}\n\n')
 
     yield f'summarized {len(relevant_docs)} documents', out
+
+def disable_btn(b):
+    return gr.update(interactive=False)
+def enable_btn(b):
+    return gr.update(interactive=True)
+
 
 with gr.Blocks() as demo:
     gr.Markdown(
@@ -144,7 +151,7 @@ with gr.Blocks() as demo:
                              choices=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"
                                       ]
                              )
-        sum_btn = gr.Button('Generate summaries')
+        sum_btn = gr.Button('Generate summaries', interactive=False)
     
 
     sum_status = gr.Textbox(show_label=False)
@@ -155,10 +162,19 @@ with gr.Blocks() as demo:
     # event listeners 
     #
     update_btn.click(
+        fn=disable_btn,
+        inputs=update_btn,
+        outputs=sum_btn
+    ).then(
         fn=create_vector_store,
         inputs=[search_terms, num_search_res],
         outputs=status
+    ).then(
+        fn=enable_btn,
+        inputs=update_btn,
+        outputs=sum_btn
     )
+    
     sum_btn.click(
         fn=generate_summaries,
         inputs=[prompt, num_relevant_docs],
