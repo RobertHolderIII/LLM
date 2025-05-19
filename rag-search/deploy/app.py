@@ -30,8 +30,8 @@ def summarize(client, transcript):
     return chat_completion.choices[0].message.content
 
 
-def web_search(query="US tariff news, analysis, and predictions"):
-    search_res = list(search(query, num_results=10, unique=True))
+def web_search(query="US tariff news, analysis, and predictions", max_search_res=10):
+    search_res = list(search(query, num_results=max_search_res, unique=True))
     return search_res
 
 
@@ -43,8 +43,8 @@ def get_text(url):
     return text
 
 
-def create_vector_store(search_terms):
-    urls = web_search(search_terms)
+def create_vector_store(search_terms, max_search_res):
+    urls = web_search(search_terms, int(max_search_res))
     documents = []
     for i,url in enumerate(urls):
         documents.append(get_text(url))
@@ -52,7 +52,11 @@ def create_vector_store(search_terms):
     ids = [f'id{i}' for i in range(len(documents))]
     metadatas = [{'source-url': url} for url in urls]
 
-    chromadb.api.client.SharedSystemClient.clear_system_cache() #prevents client getting stale
+    # prevents client getting stale
+    # https://github.com/langchain-ai/langchain/issues/26884
+    chromadb.api.client.SharedSystemClient.clear_system_cache() 
+
+    global chroma_client
     chroma_client = chromadb.Client()
     collection_name = "webpages"
 
@@ -73,17 +77,17 @@ def create_vector_store(search_terms):
     yield f'Document store recreated with {collection.count()} documents'
     
 
-def retrieve_documents(collection):
+def retrieve_documents(collection, prompt, num_docs):
     retrieval = collection.query(
         query_texts=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"],
-        n_results=5,
+        n_results=int(num_docs),
         include=["documents", "metadatas"]
     )
     return retrieval
 
-def generate_summaries():
+def generate_summaries(prompt, num_docs):
     collection = chroma_client.get_collection("webpages")
-    retrieval = retrieve_documents(collection)
+    retrieval = retrieve_documents(collection, prompt, num_docs)
     relevant_docs = retrieval['documents'][0]
 
     summaries = []
@@ -106,26 +110,63 @@ with gr.Blocks() as demo:
         """
         ## Tarrif Intel Tool
 
-        Instructions go here
+        Tool will
+        - search for documents
+        - pick the best ones
+        - generate summaries
         """
         )
-    search_terms = gr.Dropdown(label='search query', show_label=True, allow_custom_value=True,
-                               choices=["US tariff news, analysis, and predictions",
-                                        "world reaction to US tariff policy"
-                                        ]
 
-                               )
-    update_btn = gr.Button('Update documents')
-
+    #
+    # search and vector store
+    #
+    with gr.Row():
+        search_terms = gr.Dropdown(label='search query', show_label=True, allow_custom_value=True,
+                                   choices=["US tariff news, analysis, and predictions",
+                                            "world reaction to US tariff policy"
+                                            ]
+                                   )
+        num_search_res = gr.Dropdown(label='maximum search results', show_label=True, allow_custom_value=True,
+                                     choices=[10, 25, 50, 100]
+                                     )
+    update_btn = gr.Button('Search for documents')
     status = gr.Textbox(show_label=False)
+
+
+    #
+    # summarization
+    #
+    with gr.Row():
+        num_relevant_docs = gr.Dropdown(label='extract relevant documents', show_label=True, allow_custom_value=True,
+                                        choices=[5, 10, 25]
+                                        )
+        prompt = gr.Dropdown(label='prompt', show_label=True, allow_custom_value=True,
+                             choices=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"
+                                      ]
+                             )
+        sum_btn = gr.Button('Generate summaries')
     
-    sum_btn = gr.Button('Generate summaries')
+
     sum_status = gr.Textbox(show_label=False)
     out = gr.TextArea(label='Summarizations', show_label=True)
 
-    update_btn.click(fn=create_vector_store, inputs=search_terms, outputs=status)
+
+    #
+    # event listeners 
+    #
+    update_btn.click(
+        fn=create_vector_store,
+        inputs=[search_terms, num_search_res],
+        outputs=status
+    )
+    sum_btn.click(
+        fn=generate_summaries,
+        inputs=[prompt, num_relevant_docs],
+        outputs=[sum_status, out]
+    )
+
+
     
-    sum_btn.click(fn=generate_summaries, outputs=[sum_status, out])
     gr.Markdown(
         """
         [2025-05-17] initial deployment<br>
