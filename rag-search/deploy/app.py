@@ -44,11 +44,14 @@ def get_text(url):
 
 
 def create_vector_store(search_terms, max_search_res):
+    running_status = ''
     urls = web_search(search_terms, int(max_search_res))
     documents = []
     for i,url in enumerate(urls):
         documents.append(get_text(url))
-        yield f'downloading {i+1}/{len(urls)}: {url}'
+        status = f'downloading {i+1}/{len(urls)}: {url}\n'
+        running_status += status
+        yield status, running_status
     ids = [f'id{i}' for i in range(len(documents))]
     metadatas = [{'source-url': url} for url in urls]
 
@@ -73,10 +76,15 @@ def create_vector_store(search_terms, max_search_res):
         
     # TODO need to handle the case where search_res has a URL that we did not use
     # `add` uses Chroma's default sentence embedding model
-    yield f'Indexing {len(documents)} documents...'
+    status = f'Indexing documents...\n'
+    running_status += status
+    yield status, running_status
+
     collection.add(documents=documents, ids=ids, metadatas=metadatas)
-    yield f'Document store recreated with {collection.count()} documents'
-    
+
+    status = f'Document store recreated with {collection.count()} documents\n'
+    running_status += status
+    yield status, running_status
 
 def retrieve_documents(collection, prompt, num_docs):
     retrieval = collection.query(
@@ -124,39 +132,45 @@ with gr.Blocks() as demo:
         """
         )
 
-    #
-    # search and vector store
-    #
-    with gr.Row():
-        search_terms = gr.Dropdown(label='search query', show_label=True, allow_custom_value=True,
-                                   choices=["US tariff news, analysis, and predictions",
-                                            "world reaction to US tariff policy"
-                                            ]
-                                   )
-        num_search_res = gr.Dropdown(label='maximum search results', show_label=True, allow_custom_value=True,
-                                     choices=[10, 25, 50, 100]
+
+    with gr.Tab('Analysis'):
+        #
+        # search and vector store
+        #
+        with gr.Row('Search'):
+            search_terms = gr.Dropdown(label='search query', show_label=True, allow_custom_value=True,
+                                       choices=["US tariff news, analysis, and predictions",
+                                                "world reaction to US tariff policy"
+                                                ]
+                                       )
+            num_search_res = gr.Dropdown(label='maximum search results', show_label=True, allow_custom_value=True,
+                                         choices=[10, 25, 50, 100]
+                                         )
+        update_btn = gr.Button('Search for documents')
+            
+        status = gr.Textbox(show_label=False)
+            
+            
+        #
+        # summarization
+        #
+        with gr.Row():
+            num_relevant_docs = gr.Dropdown(label='extract relevant documents', show_label=True, allow_custom_value=True,
+                                                choices=[5, 10, 25]
+                                                )
+            prompt = gr.Dropdown(label='prompt', show_label=True, allow_custom_value=True,
+                                     choices=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"
+                                              ]
                                      )
-    update_btn = gr.Button('Search for documents')
-    status = gr.Textbox(show_label=False)
-
-
-    #
-    # summarization
-    #
-    with gr.Row():
-        num_relevant_docs = gr.Dropdown(label='extract relevant documents', show_label=True, allow_custom_value=True,
-                                        choices=[5, 10, 25]
-                                        )
-        prompt = gr.Dropdown(label='prompt', show_label=True, allow_custom_value=True,
-                             choices=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"
-                                      ]
-                             )
         sum_btn = gr.Button('Generate summaries', interactive=False)
-    
+                
+                
+        sum_status = gr.Textbox(show_label=False)
+        out = gr.TextArea(label='Summarizations', show_label=True)
 
-    sum_status = gr.Textbox(show_label=False)
-    out = gr.TextArea(label='Summarizations', show_label=True)
-
+    with gr.Tab('Log'):
+        all_status = gr.TextArea(show_label=False)
+        
 
     #
     # event listeners 
@@ -168,7 +182,7 @@ with gr.Blocks() as demo:
     ).then(
         fn=create_vector_store,
         inputs=[search_terms, num_search_res],
-        outputs=status
+        outputs=[status, all_status]
     ).then(
         fn=enable_btn,
         inputs=update_btn,
