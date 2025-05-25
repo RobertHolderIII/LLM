@@ -1,0 +1,3 @@
+built using google search with num=40 param
+
+sentiment generated using deepseek.  Results of deepseek uses think tags, so all the keyworks 'higher', 'lower', and 'unchanged' appear as part of that process.  Thus will have to do something smarter to determine what the conclusion is.  Maybe a better instruction to not think?  or to give the result with specific delimiters? ha - or use another LLM to interpret deepseek's results.
