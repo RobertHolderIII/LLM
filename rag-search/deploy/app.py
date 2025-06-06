@@ -1,16 +1,18 @@
 import requests
-from googlesearch import search
+from serpapi import GoogleSearch
 import chromadb
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from groq import Groq
 import os
 import gradio as gr
+import concurrent.futures
 
 load_dotenv('../../.env')
 client = Groq(api_key = os.getenv('GROQ_API_KEY'))
 os.environ["TOKENIZERS_PARALLELISM"] = "false" #prevents a warning message from langchain
 chroma_client = None
+COLLECTION_NAME = 'webpages'
 
 def summarize(client, transcript):
     chat_completion = client.chat.completions.create(
@@ -29,30 +31,65 @@ def summarize(client, transcript):
 
     return chat_completion.choices[0].message.content
 
-def web_search(query="US tariff news, analysis, and predictions", max_search_res=10):
-    search_res = list(search(query, num_results=max_search_res, unique=True))
+def web_search(query="US tariff news, analysis, and predictions", language='en', max_search_res=10):
+    gl_dict = {
+        'zh-cn': 'cn', # Language: Simplified Chinese
+        'en': 'us'
+    }
+    params = {
+        'q': query,
+        'engine': 'google',
+        'api_key': os.getenv('SERPAPI_API_KEY'),
+        #'tbs': f'cdr:1,cd_min:{cd_min.strftime("%m/%d/%Y")},cd_max:{cd_max.strftime("%m/%d/%Y")}',
+        'hl': language,                 
+        'gl': gl_dict[language],
+        'num': max_search_res
+    }
+        
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    search_res = [result.get('link') for result in results["organic_results"]]
+
     return search_res
 
 
-def get_text(url):
+def _get_text_inner(url):
     print(f'downloading {url}...')
-    response = requests.get(url)
+    response = requests.get(url, timeout=10)  # optional internal timeout
     html = response.text
-    text = BeautifulSoup(html, features="html.parser").get_text().strip()
-    return text
+    return BeautifulSoup(html, features="html.parser").get_text().strip()
 
 
-def create_vector_store(search_terms, max_search_res):
+def get_text(url, timeout_sec=3):
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(_get_text_inner, url)
+        try:
+            return future.result(timeout=timeout_sec)
+        except concurrent.futures.TimeoutError:
+            print(f'\t**** download timed out for {url}')
+            return '{skip}{timeout}'
+        except Exception as e:
+            print(f'\t**** could not download {url}: {e}')
+            return '{skip}{could not download}'
+
+
+def create_vector_store(search_terms, query_lang, max_search_res):
     running_status = ''
-    urls = web_search(search_terms, int(max_search_res))
+    urls = web_search(search_terms, query_lang, int(max_search_res))
     documents = []
+    ids = []
+    metadatas = []
     for i,url in enumerate(urls):
-        documents.append(get_text(url))
-        status = f'downloading {i+1}/{len(urls)}: {url}'
+        status = f'downloading {i+1}/{len(urls)}: {url}...'
+        txt = get_text(url)
+        if '{skip}' in txt:
+            status += txt
+        else:
+            documents.append(txt)
+            ids.append(str(i))
+            metadatas.append({'source-url': url})
         running_status += '\n' + status
         yield status, running_status
-    ids = [f'id{i}' for i in range(len(documents))]
-    metadatas = [{'source-url': url} for url in urls]
 
     # prevents client getting stale
     # https://github.com/langchain-ai/langchain/issues/26884
@@ -60,18 +97,17 @@ def create_vector_store(search_terms, max_search_res):
 
     global chroma_client
     chroma_client = chromadb.Client()
-    collection_name = "webpages"
 
     # get rid of old collection
     try:
-        chroma_client.get_collection(collection_name)
+        chroma_client.get_collection(COLLECTION_NAME)
     except:
         # Collection does not exist
         pass
     else:
-        chroma_client.delete_collection(collection_name)
+        chroma_client.delete_collection(COLLECTION_NAME)
         
-    collection = chroma_client.create_collection(name=collection_name)
+    collection = chroma_client.create_collection(name=COLLECTION_NAME)
         
     # TODO need to handle the case where search_res has a URL that we did not use
     # `add` uses Chroma's default sentence embedding model
@@ -86,9 +122,9 @@ def create_vector_store(search_terms, max_search_res):
     yield status, running_status
 
 def retrieve_documents(prompt, num_docs):
-    collection = chroma_client.get_collection("webpages")
+    collection = chroma_client.get_collection(COLLECTION_NAME)
     retrieval = collection.query(
-        query_texts=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"],
+        query_texts=[prompt],
         n_results=int(num_docs),
         include=["documents", "metadatas"]
     )
@@ -114,7 +150,7 @@ def generate_summaries(prompt, num_docs):
     yield f'summarized {len(relevant_docs)} documents', out
 
 
-def comprehensive_summary(prompt, num_docs):
+def comprehensive_summary(prompt, sum_prompt, num_docs):
     retrieval = retrieve_documents(prompt, num_docs)
     relevant_docs = retrieval['documents'][0]
 
@@ -134,13 +170,13 @@ def comprehensive_summary(prompt, num_docs):
             },
             {
                 "role": "user",
-                "content": f"Please provide an overall summary of the points from the following articles:\n\n{transcript}",
+                "content": f"{sum_prompt}:\n\n{transcript}",
             }
         ],
         model="llama-3.3-70b-versatile",
     )
 
-    status_msg = f'generated single summary of {len(relevant_docs)} documents'
+    status_msg = f'generated summary of {len(relevant_docs)} documents based on prompt "{sum_prompt}"'
     
     return status_msg, chat_completion.choices[0].message.content
 
@@ -173,7 +209,15 @@ with gr.Blocks() as demo:
                                        show_label=True,
                                        allow_custom_value=True,
                                        choices=["US tariff news, analysis, and predictions",
+                                                "关税新闻、分析与预测",
                                                 "world reaction to US tariff policy"
+                                                ]
+                                       )
+            search_language = gr.Dropdown(label='query language',
+                                       show_label=True,
+                                       #allow_custom_value=True,
+                                       choices=["en",
+                                                "zh-cn",
                                                 ]
                                        )
             num_search_res = gr.Dropdown(label='maximum search results',
@@ -195,10 +239,17 @@ with gr.Blocks() as demo:
                                             allow_custom_value=True,
                                             choices=[5, 10, 25]
                                             )
-            prompt = gr.Dropdown(label='prompt',
+            prompt = gr.Dropdown(label='filter documents',
                                  show_label=True,
                                  allow_custom_value=True,
                                  choices=["what are the most important bits of news to know about US tariff policy and analysis of future actions?"
+                                          ]
+                                 )
+            sum_prompt = gr.Dropdown(label='summarization',
+                                 show_label=True,
+                                 allow_custom_value=True,
+                                 choices=["Please provide an overall summary of the points from the following articles in English",
+                                          "Please give the top 5 consensus points from the following articles in English.  Please also provide any outlying points of interest and their source"
                                           ]
                                  )
         sum_btn = gr.Button('Generate summaries', interactive=False)
@@ -224,7 +275,7 @@ with gr.Blocks() as demo:
         outputs=sum_btn
     ).then(
         fn=create_vector_store,
-        inputs=[search_terms, num_search_res],
+        inputs=[search_terms, search_language, num_search_res],
         outputs=[status, all_status]
     ).then(
         fn=enable_btn,
@@ -235,7 +286,7 @@ with gr.Blocks() as demo:
     sum_btn.click(
         #fn=generate_summaries,
         fn=comprehensive_summary,
-        inputs=[prompt, num_relevant_docs],
+        inputs=[prompt, sum_prompt, num_relevant_docs],
         outputs=[sum_status, out]
     )
     
