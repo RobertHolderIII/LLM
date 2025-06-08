@@ -8,7 +8,10 @@ import os
 import gradio as gr
 import concurrent.futures
 
+# env file is for local testing.
+# for huggingface, upload API keys as secrets
 load_dotenv('../../.env')
+
 client = Groq(api_key = os.getenv('GROQ_API_KEY'))
 os.environ["TOKENIZERS_PARALLELISM"] = "false" #prevents a warning message from langchain
 chroma_client = None
@@ -32,6 +35,9 @@ def summarize(client, transcript):
     return chat_completion.choices[0].message.content
 
 def web_search(query="US tariff news, analysis, and predictions", language='en', max_search_res=10):
+    if query == 'test':
+        return [f'test-link-{i}' for i in range(max_search_res)]
+        
     gl_dict = {
         'zh-cn': 'cn', # Language: Simplified Chinese
         'en': 'us'
@@ -48,6 +54,12 @@ def web_search(query="US tariff news, analysis, and predictions", language='en',
         
     search = GoogleSearch(params)
     results = search.get_dict()
+    res_keys = list(results.keys())
+    print(f'received search results with keys {res_keys}')
+    if 'error' in res_keys:
+        error_msg = results["error"]
+        print(error_msg)
+        search_res = [error_msg]
     search_res = [result.get('link') for result in results["organic_results"]]
 
     return search_res
@@ -61,6 +73,9 @@ def _get_text_inner(url):
 
 
 def get_text(url, timeout_sec=3):
+    if url.startswith('test-link-'):
+        return 'url' + '-text-text-text'
+        
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future = executor.submit(_get_text_inner, url)
         try:
@@ -73,8 +88,11 @@ def get_text(url, timeout_sec=3):
             return '{skip}{could not download}'
 
 
-def create_vector_store(search_terms, query_lang, max_search_res):
-    running_status = ''
+def create_vector_store(search_terms, query_lang, max_search_res, running_status):
+    status = f'searching for documents using terms: {search_terms}'
+    running_status += '\n' + status
+    yield status, running_status
+    
     urls = web_search(search_terms, query_lang, int(max_search_res))
     documents = []
     ids = []
@@ -137,7 +155,11 @@ def generate_summaries(prompt, num_docs):
     summaries = []
     for i, doc in enumerate(relevant_docs):
         yield f'summarizing {i+1}/{len(relevant_docs)} documents','In progress...'
-        summaries.append(summarize(client,doc[:5000]))
+        if prompt == 'test':
+            summary = f'summary of {doc}'
+        else:
+            summary = summarize(client,doc[:5000])
+        summaries.append(summary)
 
     
     # format summaries
@@ -150,8 +172,13 @@ def generate_summaries(prompt, num_docs):
     yield f'summarized {len(relevant_docs)} documents', out
 
 
-def comprehensive_summary(prompt, sum_prompt, num_docs):
-    retrieval = retrieve_documents(prompt, num_docs)
+def comprehensive_summary(filter_prompt, sum_prompt, num_docs, running_status):
+
+    status_msg = f'choosing relevant documents based on prompt: {filter_prompt}...'
+    running_status += '\n' + status_msg
+    yield status_msg, 'In progress...', running_status
+    
+    retrieval = retrieve_documents(filter_prompt, num_docs)
     relevant_docs = retrieval['documents'][0]
 
     # limit is 12000 tokens ~ 48000 characters
@@ -161,24 +188,30 @@ def comprehensive_summary(prompt, sum_prompt, num_docs):
 
     transcript = '\n------\n'.join(relevant_docs)
 
+    status_msg = f'generating summaries based on prompt: {sum_prompt}...'
+    running_status += '\n' + status_msg
+    yield status_msg, 'In progress...', running_status
     
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant that summarizes text."
-            },
-            {
-                "role": "user",
-                "content": f"{sum_prompt}:\n\n{transcript}",
-            }
-        ],
-        model="llama-3.3-70b-versatile",
-    )
-
-    status_msg = f'generated summary of {len(relevant_docs)} documents based on prompt "{sum_prompt}"'
+    if filter_prompt == 'test' or sum_prompt == 'test':
+        summary = 'test-comprehensive-summary'
+    else:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that summarizes text."
+                },
+                {
+                    "role": "user",
+                    "content": f"{sum_prompt}:\n\n{transcript}",
+                }
+            ],
+            model="llama-3.3-70b-versatile",
+        )
+        summary = chat_completion.choices[0].message.content
+    status_msg = f'generated summary of {len(relevant_docs)} documents based on prompt: "{sum_prompt}"'
     
-    return status_msg, chat_completion.choices[0].message.content
+    yield status_msg, summary, f'{running_status}\n{status_msg}'
 
     
 def disable_btn(b):
@@ -193,8 +226,8 @@ with gr.Blocks() as demo:
         ## Tarrif Intel Tool
 
         Tool will
-        - search for documents
-        - pick the best ones
+        - perform a web search for documents
+        - pick the most relevant ones
         - generate summaries
         """
         )
@@ -275,7 +308,7 @@ with gr.Blocks() as demo:
         outputs=sum_btn
     ).then(
         fn=create_vector_store,
-        inputs=[search_terms, search_language, num_search_res],
+        inputs=[search_terms, search_language, num_search_res, all_status],
         outputs=[status, all_status]
     ).then(
         fn=enable_btn,
@@ -286,8 +319,8 @@ with gr.Blocks() as demo:
     sum_btn.click(
         #fn=generate_summaries,
         fn=comprehensive_summary,
-        inputs=[prompt, sum_prompt, num_relevant_docs],
-        outputs=[sum_status, out]
+        inputs=[prompt, sum_prompt, num_relevant_docs, all_status],
+        outputs=[sum_status, out, all_status]
     )
     
     gr.Markdown(
