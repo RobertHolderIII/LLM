@@ -59,8 +59,9 @@ def web_search(query="US tariff news, analysis, and predictions", language='en',
     if 'error' in res_keys:
         error_msg = results["error"]
         print(error_msg)
-        search_res = [error_msg]
-    search_res = [result.get('link') for result in results["organic_results"]]
+        search_res = error_msg
+    else:
+        search_res = [result.get('link') for result in results["organic_results"]]
 
     return search_res
 
@@ -94,50 +95,59 @@ def create_vector_store(search_terms, query_lang, max_search_res, running_status
     yield status, running_status
     
     urls = web_search(search_terms, query_lang, int(max_search_res))
-    documents = []
-    ids = []
-    metadatas = []
-    for i,url in enumerate(urls):
-        status = f'downloading {i+1}/{len(urls)}: {url}...'
-        txt = get_text(url)
-        if '{skip}' in txt:
-            status += txt
-        else:
-            documents.append(txt)
-            ids.append(str(i))
-            metadatas.append({'source-url': url})
+
+    # check for web search error, such as bad API key
+    if isinstance(urls, str):
+        # handle error
+        status = urls
         running_status += '\n' + status
         yield status, running_status
-
-    # prevents client getting stale
-    # https://github.com/langchain-ai/langchain/issues/26884
-    chromadb.api.client.SharedSystemClient.clear_system_cache() 
-
-    global chroma_client
-    chroma_client = chromadb.Client()
-
-    # get rid of old collection
-    try:
-        chroma_client.get_collection(COLLECTION_NAME)
-    except:
-        # Collection does not exist
-        pass
+    
     else:
-        chroma_client.delete_collection(COLLECTION_NAME)
-        
-    collection = chroma_client.create_collection(name=COLLECTION_NAME)
-        
-    # TODO need to handle the case where search_res has a URL that we did not use
-    # `add` uses Chroma's default sentence embedding model
-    status = f'Indexing documents...'
-    running_status += '\n' + status
-    yield status, running_status
-
-    collection.add(documents=documents, ids=ids, metadatas=metadatas)
-
-    status = f'Document store recreated with {collection.count()} documents'
-    running_status += '\n' + status
-    yield status, running_status
+        documents = []
+        ids = []
+        metadatas = []
+        for i,url in enumerate(urls):
+            status = f'downloading {i+1}/{len(urls)}: {url}...'
+            txt = get_text(url)
+            if '{skip}' in txt:
+                status += txt
+            else:
+                documents.append(txt)
+                ids.append(str(i))
+                metadatas.append({'source-url': url})
+            running_status += '\n' + status
+            yield status, running_status
+    
+        # prevents client getting stale
+        # https://github.com/langchain-ai/langchain/issues/26884
+        chromadb.api.client.SharedSystemClient.clear_system_cache() 
+    
+        global chroma_client
+        chroma_client = chromadb.Client()
+    
+        # get rid of old collection
+        try:
+            chroma_client.get_collection(COLLECTION_NAME)
+        except:
+            # Collection does not exist
+            pass
+        else:
+            chroma_client.delete_collection(COLLECTION_NAME)
+            
+        collection = chroma_client.create_collection(name=COLLECTION_NAME)
+            
+        # TODO need to handle the case where search_res has a URL that we did not use
+        # `add` uses Chroma's default sentence embedding model
+        status = f'Indexing documents...'
+        running_status += '\n' + status
+        yield status, running_status
+    
+        collection.add(documents=documents, ids=ids, metadatas=metadatas)
+    
+        status = f'Document store recreated with {collection.count()} documents'
+        running_status += '\n' + status
+        yield status, running_status
 
 def retrieve_documents(prompt, num_docs):
     collection = chroma_client.get_collection(COLLECTION_NAME)
