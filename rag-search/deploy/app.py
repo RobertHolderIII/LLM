@@ -7,6 +7,7 @@ from groq import Groq
 import os
 import gradio as gr
 import concurrent.futures
+from pypdf import PdfReader
 
 # env file is for local testing.
 # for huggingface, upload API keys as secrets
@@ -89,6 +90,54 @@ def get_text(url, timeout_sec=3):
             return '{skip}{could not download}'
 
 
+def gen_status(status, running_status):
+    yield status, f'{running_status}\n{status}'
+
+## REFACTOR!
+def create_vector_store_from_upload(files, running_status):
+    
+    status =  f'I see {len(files)} files, e.g. {files[0].name}'
+    running_status += f'\n{status}'
+    yield status, running_status
+
+    documents = []
+    ids = []
+    metadatas = []
+
+    
+    
+    for i,file in enumerate(files):
+        status = f'processing {i+1}/{len(files)}: {file}...'
+        running_status += f'\n{status}'
+        yield status, running_status
+
+        _, ext = os.path.splitext(file.name)
+        #print(f'found {ext=}')
+        
+        contents = ''
+        if ext == '.pdf':
+            reader = PdfReader(file.name)
+            for page in reader.pages:
+                contents += '\n' + page.extract_text()
+
+        elif ext == '.txt':
+            contents = file.read().decode('utf-8')
+            
+        else:
+            status = f'\tunsupported extention {ext}'
+            running_status += f'\n{status}'
+            yield status, running_status
+
+        #print(f'found {contents=}')
+            
+        if contents:
+            documents.append(contents)
+            ids.append(str(i))
+            metadatas.append({'source-url': file.name})
+            
+    yield from vector_store_helper(documents, ids, metadatas, running_status)
+
+        
 def create_vector_store(search_terms, query_lang, max_search_res, running_status):
     status = f'searching for documents using terms: {search_terms}'
     running_status += '\n' + status
@@ -102,52 +151,56 @@ def create_vector_store(search_terms, query_lang, max_search_res, running_status
         status = urls
         running_status += '\n' + status
         yield status, running_status
+        return
     
-    else:
-        documents = []
-        ids = []
-        metadatas = []
-        for i,url in enumerate(urls):
-            status = f'downloading {i+1}/{len(urls)}: {url}...'
-            txt = get_text(url)
-            if '{skip}' in txt:
-                status += txt
-            else:
-                documents.append(txt)
-                ids.append(str(i))
-                metadatas.append({'source-url': url})
-            running_status += '\n' + status
-            yield status, running_status
-    
-        # prevents client getting stale
-        # https://github.com/langchain-ai/langchain/issues/26884
-        chromadb.api.client.SharedSystemClient.clear_system_cache() 
-    
-        global chroma_client
-        chroma_client = chromadb.Client()
-    
-        # get rid of old collection
-        try:
-            chroma_client.get_collection(COLLECTION_NAME)
-        except:
-            # Collection does not exist
-            pass
+    documents = []
+    ids = []
+    metadatas = []
+    for i,url in enumerate(urls):
+        status = f'downloading {i+1}/{len(urls)}: {url}...'
+        txt = get_text(url)
+        if '{skip}' in txt:
+            status += txt
         else:
-            chroma_client.delete_collection(COLLECTION_NAME)
-            
-        collection = chroma_client.create_collection(name=COLLECTION_NAME)
-            
-        # TODO need to handle the case where search_res has a URL that we did not use
-        # `add` uses Chroma's default sentence embedding model
-        status = f'Indexing documents...'
+            documents.append(txt)
+            ids.append(str(i))
+            metadatas.append({'source-url': url})
         running_status += '\n' + status
         yield status, running_status
-    
-        collection.add(documents=documents, ids=ids, metadatas=metadatas)
-    
-        status = f'Document store recreated with {collection.count()} documents'
-        running_status += '\n' + status
-        yield status, running_status
+
+    yield from vector_store_helper(documents, ids, metadatas, running_status)
+
+def vector_store_helper(documents, ids, metadatas, running_status):
+        
+    # prevents client getting stale
+    # https://github.com/langchain-ai/langchain/issues/26884
+    chromadb.api.client.SharedSystemClient.clear_system_cache() 
+
+    global chroma_client
+    chroma_client = chromadb.Client()
+
+    # get rid of old collection
+    try:
+        chroma_client.get_collection(COLLECTION_NAME)
+    except:
+        # Collection does not exist
+        pass
+    else:
+        chroma_client.delete_collection(COLLECTION_NAME)
+        
+    collection = chroma_client.create_collection(name=COLLECTION_NAME)
+        
+    # TODO need to handle the case where search_res has a URL that we did not use
+    # `add` uses Chroma's default sentence embedding model
+    status = f'Indexing documents...'
+    running_status += '\n' + status
+    yield status, running_status
+
+    collection.add(documents=documents, ids=ids, metadatas=metadatas)
+
+    status = f'Document store recreated with {collection.count()} documents'
+    running_status += '\n' + status
+    yield status, running_status
 
 def retrieve_documents(prompt, num_docs):
     collection = chroma_client.get_collection(COLLECTION_NAME)
@@ -268,8 +321,11 @@ with gr.Blocks() as demo:
                                          allow_custom_value=True,
                                          choices=[10, 25, 50, 100]
                                          )
-        update_btn = gr.Button('Search for documents')
-            
+
+        with gr.Row('Execute'):
+            update_btn = gr.Button('Search for documents')
+            gr.Markdown('Or upload file archive:')
+            upload_btn = gr.File(file_count='multiple', height=120)
         status = gr.Textbox(show_label=False)
             
             
@@ -325,7 +381,22 @@ with gr.Blocks() as demo:
         inputs=update_btn,
         outputs=sum_btn
     )
-    
+
+    upload_btn.upload(
+        fn=disable_btn,
+        inputs=update_btn,
+        outputs=sum_btn
+    ).then(
+        fn=create_vector_store_from_upload,
+        inputs=[upload_btn, all_status],
+        outputs=[status, all_status]
+    ).then(
+        fn=enable_btn,
+        inputs=update_btn,
+        outputs=sum_btn
+    )
+
+                                     
     sum_btn.click(
         #fn=generate_summaries,
         fn=comprehensive_summary,
